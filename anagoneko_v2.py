@@ -25,7 +25,7 @@ from pykeigan import usbcontroller
 class Body:
     def __init__(self):
         self.physio = dict(
-            {"eat": 100.0, "sleep": 10.0, "play": 100.0, "obs": 0.0, "stan": 0.0, "warn": 0.0})  # すべて0-1
+            {"eat": 100.0, "sleep": 100.0, "play": 10.0, "obs": 0.0, "stan": 0.0, "warn": 0.0})  # すべて0-1
         self.p_decay = dict(
             {"sleep": 2.0, "eat": 6.0, "play": 3.0, "obs": 20.0, "stan": 0.0, "warn": 0.0})
         self.modules = {"reflector": Reflect(), "sleeper": Sleep(), "eater": Eat(), "observer": Observe(), "player": Interact()}  # [0]が一番優先度高い
@@ -40,8 +40,8 @@ class Body:
         self.border_pos = 25.0
         self.sensor = Sensor(self.max_pos, self.border_pos)
 
-        self.sensor_info = {"food": 0, "sound": deque([0], maxlen=30), "touch": deque([0, 0, 0], maxlen=100),
-                            "torque": deque([0], maxlen=100), "pos": 0, "pos_log": deque([0], maxlen=50)}  # 外からはreadonly
+        self.sensor_info = {"food": 0, "sound": deque([0], maxlen=30), "touch": deque([[0, 0, 0]], maxlen=20),
+                            "torque": deque([0], maxlen=100), "pos": 0, "pos_log": deque([0], maxlen=50), "velo_log": deque([0], maxlen=50)}  # 外からはreadonly
 
         for k in self.modules.keys():
             self.modules[k].s = self.sensor_info
@@ -76,10 +76,21 @@ class Body:
             m.dev = self.dev
         self.sensor.dev = self.dev
         self.dev.set_max_torque(0.03)
-        self.dev.move_to_pos(utils.deg2rad(-40), (utils.deg2rad(90) / 3))
-        time.sleep(3)
-        self.dev.move_to_pos(0.01)
+        #self.dev.move_to_pos(utils.deg2rad(-40), (utils.deg2rad(90) / 3))
+        #time.sleep(3)
+        #self.dev.move_to_pos(0.01)
 
+
+        #time.sleep(3)
+        """self.dev.set_acc(200)
+        self.dev.set_curve_type(2)
+        self.dev.set_speed(utils.deg2rad(600))
+        time.sleep(2)
+        while True:
+            self.dev.move_to_pos(utils.deg2rad(-70))
+            time.sleep(0.2)
+            self.dev.move_to_pos(utils.deg2rad(-60))
+            time.sleep(0.2)"""
 
 
     def life(self):
@@ -165,7 +176,7 @@ class Body:
         if self.sensor_info["pos"] >= self.border_pos:  # 外にいる間は観察できる
             self.physio["obs"] = 100
             if not self.belief["food"] and self.sensor_info["food"] and self.physio["eat"] - 20 > 0:  # 目の前でスイッチが押されるのを見ると食欲が湧く
-                self.physio["eat"] = self.physio["eat"] - 20
+                self.physio["eat"] = self.physio["eat"] - 12
             self.belief["food"] = self.sensor_info["food"]
 
 
@@ -178,6 +189,7 @@ class Body:
         self.sensor_info["food"] = temp_sensor["food"]
         self.sensor_info["pos"] = temp_sensor["pos"]
         self.sensor_info["pos_log"].append(temp_sensor["pos"])
+        self.sensor_info["velo_log"].append(temp_sensor["velo"])
         self.sensor_info["sound"].append(temp_sensor["sound"])
         self.sensor_info["touch"].append(temp_sensor["touch"])
         self.sensor_info["torque"].append(temp_sensor["torque"])

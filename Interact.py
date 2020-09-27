@@ -6,6 +6,7 @@ import random
 import sys
 import os
 from Modules import Module
+import numpy as np
 from pykeigan import utils
 from pykeigan import usbcontroller
 
@@ -20,18 +21,48 @@ class Interact(Module):
         stop = False
         accumulative = 0
         t = 0
+        temp = 0
+        def_pos = 0
         while self.p["play"] <= 90:
-            t += 0  # このtでランダムな移動を作る
+            t += 1  # このtでランダムな移動を作る
+
+
+            if t >= temp:
+                t = 0
+                temp = random.randint(20, 60)
+
+                if self.p["sleep"] <= 50:
+                    def_pos = random.randint(35, 55)
+                else:
+                    def_pos = random.randint(45, 65)
+
+                # self.dev.set_speed(utils.rpm2rad_per_sec(30))
+                self.dev.set_speed(utils.deg2rad(40))
+                self.dev.move_to_pos(utils.deg2rad(-def_pos))
 
 
             # 報酬の処理
             self.p["play"] = self.p["play"] + 0.01  # 0.06
-            accumulative = self.play_update()
-            if accumulative >= 20:
+            if np.var(np.array(self.s["touch"])[:, 0]) + np.var(np.array(self.s["touch"])[:, 1]) + np.var(np.array(self.s["touch"])[:, 2]) >= 2000:
+                accumulative += 1
+            else:
+                accumulative -= 0.1
+                if accumulative <= 0:
+                    accumulative = 0
+            if accumulative >= 22:
                 accumulative = 0
-                self.p["play"] = self.p["play"] + 20
-                # @喜びの舞
+                self.p["play"] = self.p["play"] + 15
+                self.dev.set_speed(utils.deg2rad(640))
+                for i in range(5):
+                    self.dev.move_to_pos(utils.deg2rad(-def_pos))
+                    time.sleep(0.18)
+                    self.dev.move_to_pos(utils.deg2rad(-def_pos + 20))
+                    time.sleep(0.18)
 
+            print(
+                "\033[" + str(39) + ";2H\033[2K" + "=================== touch " + str(accumulative) +  "====" +str(
+                    np.var(np.array(self.s["touch"])[:, 0])) + "|" + str(np.var(np.array(self.s["touch"])[:, 1])) +
+                "|" + str(np.var(np.array(self.s["touch"])[:, 2])), end = "")
 
             # 中断の処理
             time.sleep(0.1)
@@ -63,5 +94,3 @@ class Interact(Module):
     def play_torque(self):
         return False
 
-    def play_update(self):
-        return 0

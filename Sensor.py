@@ -24,6 +24,7 @@ class Sensor:
 
         measurement = self.dev.read_motor_measurement()
         pos = abs(measurement["position"] * 180 / math.pi)
+        velo = abs(measurement["velocity"] * 180 / math.pi)
         torque =  - measurement["torque"]
         food = GPIO.input(37)
 
@@ -32,7 +33,7 @@ class Sensor:
         tail = adc.read_adc(2, gain=GAIN)
         sound = adc.read_adc(3, gain=1)
 
-        sens = {"food": food, "sound": sound, "touch": [head,body,tail], "torque": torque, "pos": pos}
+        sens = {"food": food, "sound": sound, "touch": [head,body,tail], "torque": torque, "pos": pos, "velo": velo}
         print("\033[" + str(44) + ";2H\033[2K" + str(sens), end="")
         return sens
 

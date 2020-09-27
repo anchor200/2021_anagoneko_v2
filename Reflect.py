@@ -28,6 +28,8 @@ class Reflect(Module):
         return False
 
     def ref_torque(self):  # 強いものが来ると反応
+        print("\033[" + str(38) + ";2H\033[2K" + "=================== " + str(self.cum_torque) + "== velo var" + str(
+            np.var(np.array(self.s["velo_log"]))), end="")
 
         if abs(self.s["torque"][-1]) >= 0.02:
             self.cum_torque += 1
@@ -39,16 +41,17 @@ class Reflect(Module):
             self.cum_torque = 0
             return True
 
-        print("\033[" + str(39) + ";2H\033[2K" + "=================== " + str(self.cum_torque) + "cum torque idouryo" + str(np.var(np.array(self.s["pos_log"]))), end="")
-
         if abs(self.s["torque"][-1]) >= 0.08 and self.s["pos"] <= 80:
+            return True
+
+        if abs(self.s["torque"][-1]) >= 0.02 and np.var(np.array(self.s["velo_log"])) >= 1000 and self.s["pos"] <= 80:
             return True
         return False
 
     def ref_sound(self):
         # deque内の累計値で、sleepの深さによって反応性が違うようにする
         # とりあえず寝てるのを起こすだけにする0928
-        ## print("\033[" + str(39) + ";2H\033[2K" + "=================== " + str(self.cum_sound) + "== sound var" + str(np.var(np.array(self.s["sound"]))), end="")
+        # print("\033[" + str(38) + ";2H\033[2K" + "=================== " + str(self.cum_sound) + "== sound var" + str(np.var(np.array(self.s["sound"]))), end="")
         if np.var(np.array(self.s["sound"])) >= 200:
             self.cum_sound += 1
         else:
@@ -56,7 +59,7 @@ class Reflect(Module):
             if self.cum_sound < 0:
                 self.cum_sound = 0
 
-        if self.s["pos"] <= 20 and self.p["sleep"] >= 30:  # 隠れているときだけ、の意味
+        if self.s["pos"] <= 20 and self.p["sleep"] >= 30 and self.p["sleep"] <= 60:  # 隠れているときだけ、の意味 眠気が中途半端なときだけ音に反応
             if self.cum_sound >= 90 - self.p["sleep"]:
                 self.cum_sound = 0
                 return True
@@ -64,7 +67,7 @@ class Reflect(Module):
         return False
 
     def fight_flight(self):
-        if self.p["eat"] + self.p["sleep"] <= 60 and False:
+        if (self.p["eat"] + self.p["sleep"] <= 60 and 25 <= self.s["pos"] <= 70):
             return "fight"
         else:
             return "flight"
@@ -72,6 +75,16 @@ class Reflect(Module):
     def v_operator(self):
         print("reflection started")
         if self.fight_flight() == "fight":
+            temp = -self.s["pos"]
+            self.dev.set_speed(utils.deg2rad(840))
+            self.dev.set_curve_type(2)
+            self.dev.set_acc(200)
+            self.dev.set_max_torque(0.5)
+            self.dev.move_to_pos(utils.deg2rad(min(temp + 20, 0)))
+            time.sleep(0.2)
+            self.dev.move_to_pos(utils.deg2rad(temp - 10))
+            time.sleep(1)
+
             pass
             # @暴れる
         else:
