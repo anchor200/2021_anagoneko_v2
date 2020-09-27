@@ -5,6 +5,8 @@ import time
 import random
 import sys
 import os
+from pykeigan import utils
+from pykeigan import usbcontroller
 
 
 class Module:
@@ -13,8 +15,11 @@ class Module:
         self.waiting = False
         self.stopper = False
         self.finished = False
+        self.module_working = False
         self.p = {}  # physio
         self.s = {}  # sensor
+        self.dev = None
+        self.b = {}  # belief
 
     def is_active(self, physio):
         if random.random() <= 0.001:
@@ -45,11 +50,13 @@ class Module:
         self.finished = True
 
     def module_loop(self):
+
         while True:
             # この中からoperatorを起動させる
             if self.waiting:
                 self.waiting = False
                 self.v_operator()
+
             time.sleep(0.01)
 
     def learner(self):

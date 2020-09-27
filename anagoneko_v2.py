@@ -7,8 +7,9 @@ import time
 import threading
 import random
 import sys
+import argparse
 import os
-import numpy
+import numpy as np
 os.system('clear')
 from Eat import Eat
 from Sleep import Sleep
@@ -17,30 +18,68 @@ from Reflect import Reflect
 from Interact import Interact
 from Sensor import Sensor
 from collections import deque
+from pykeigan import utils
+from pykeigan import usbcontroller
+
 
 class Body:
     def __init__(self):
         self.physio = dict(
-            {"eat": 100.0, "sleep": 21.0, "play": 100.0, "obs": 0.0, "stan": 0.0, "warn": 0.0})  # すべて0-1
+            {"eat": 100.0, "sleep": 10.0, "play": 100.0, "obs": 0.0, "stan": 0.0, "warn": 0.0})  # すべて0-1
         self.p_decay = dict(
-            {"sleep": 1.0, "eat": 6.0, "play": 3.0, "obs": 20.0, "stan": 0.0, "warn": 0.0})
+            {"sleep": 2.0, "eat": 6.0, "play": 3.0, "obs": 20.0, "stan": 0.0, "warn": 0.0})
         self.modules = {"reflector": Reflect(), "sleeper": Sleep(), "eater": Eat(), "observer": Observe(), "player": Interact()}  # [0]が一番優先度高い
+
+        self.belief = {"food": 0}
         print("======= installed modules")
         for i in range(len(self.modules)):
             print("•" + str(list(self.modules.keys())[len(self.modules) - i - 1]))
         print("\n\n======= it got birth\n\n")
 
-        self.max_pos = 70.0
-        self.border_pos = 15.0
+        self.max_pos = 87.0
+        self.border_pos = 25.0
         self.sensor = Sensor(self.max_pos, self.border_pos)
 
-        self.sensor_info = {"food": 0, "sound": deque([0], maxlen=100), "touch": deque([0, 0, 0], maxlen=100),
-                            "torque": deque([0], maxlen=100), "pos": 0}  # 外からはreadonly
+        self.sensor_info = {"food": 0, "sound": deque([0], maxlen=30), "touch": deque([0, 0, 0], maxlen=100),
+                            "torque": deque([0], maxlen=100), "pos": 0, "pos_log": deque([0], maxlen=50)}  # 外からはreadonly
+
+        for k in self.modules.keys():
+            self.modules[k].s = self.sensor_info
+            self.modules[k].p = self.physio
+            self.modules[k].b = self.belief
+
         #self.food = 0  # binary
         #self.touch = [0,0,0] # 頭,胸,腹 だいたいで正規化して1-10にする
         #self.torque = 0 # だいたいで正規化して1-10にする
 
         self.action_log = {"none": 0, "sleeper": 0, "eater": 0, "player": 0}
+        self.motor_init()
+
+
+    def motor_init(self):
+        parser = argparse.ArgumentParser(description='モーターに接続し、各種情報の取得')
+        parser.add_argument('port', metavar='PORT', default='/dev/ttyUSB1', nargs='?',
+                            help='モーターのデバイスファイル指定 (default:/dev/ttyUSB1)')
+        args = parser.parse_args()
+        self.dev = usbcontroller.USBController(args.port, False, baud=1000000)  # モーターのアドレス 参照 usb-simple-connection.py
+        print("tsunagatta")
+        self.dev.disable_action()
+        self.dev.set_max_speed(utils.deg2rad(1000))
+        time.sleep(2)
+        self.dev.enable_action()
+        self.dev.preset_position(0.0)
+        self.dev.set_curve_type(1)
+        self.dev.set_acc(100)
+        self.dev.set_led(2, 0, 255, 255)
+        self.dev.set_speed(utils.deg2rad(180))
+        for m in self.modules.values():
+            m.dev = self.dev
+        self.sensor.dev = self.dev
+        self.dev.set_max_torque(0.03)
+        self.dev.move_to_pos(utils.deg2rad(-40), (utils.deg2rad(90) / 3))
+        time.sleep(3)
+        self.dev.move_to_pos(0.01)
+
 
 
     def life(self):
@@ -84,6 +123,7 @@ class Body:
                 # print("module start : " + active_layer[1])
                 self.modules[active_layer[1]].s = self.sensor_info
                 self.modules[active_layer[1]].p = self.physio
+                self.modules[active_layer[1]].b = self.belief
                 self.modules[active_layer[1]].waiting = True
 
             if temp_active_layer[0] >= 0:
@@ -92,7 +132,10 @@ class Body:
                     self.print_status(40, "module kill" + "\n")
                     self.modules[active_layer[1]].finished = False
                     active_layer = [-1, "none"]
-                    # @noneになったらとりあえず巣に帰らせる?
+
+                    # @noneになったらとりあえず巣に帰らせる
+                    self.dev.set_speed(utils.rpm2rad_per_sec(10))
+                    self.dev.move_to_pos(0.0)
                     self.print_status(10, '\033[30m' + "active module : " + '\033[0m' + active_layer[1] + "\n")
 
             self.physio_sim()  # 生理状態のシミュレーション
@@ -103,7 +146,12 @@ class Body:
             except KeyError:
                 pass
 
-            time.sleep(0.05)
+
+            try:
+                time.sleep(0.05)
+            except KeyboardInterrupt:
+                self.dev.disable_action()
+                self.dev.disconnect()
 
     def updater(self):
         pass
@@ -113,9 +161,13 @@ class Body:
         for k in self.physio.keys():
             self.physio[k] = self.physio[k] - (max(self.physio[k], 0.0)) * dt * self.p_decay[k]
         if self.is_sound():  # 直近に音がなっていた
-            self.physio["obs"] = max(self.physio["obs"] - 50, 0)
+            self.physio["obs"] = max(self.physio["obs"] - 5, 0)
         if self.sensor_info["pos"] >= self.border_pos:  # 外にいる間は観察できる
             self.physio["obs"] = 100
+            if not self.belief["food"] and self.sensor_info["food"] and self.physio["eat"] - 20 > 0:  # 目の前でスイッチが押されるのを見ると食欲が湧く
+                self.physio["eat"] = self.physio["eat"] - 20
+            self.belief["food"] = self.sensor_info["food"]
+
 
     def sense(self):
         """if temp_active_layer[0] >= 0:
@@ -125,6 +177,7 @@ class Body:
         # @自分の動きでセンサーに入力が入っていないように、チェックする
         self.sensor_info["food"] = temp_sensor["food"]
         self.sensor_info["pos"] = temp_sensor["pos"]
+        self.sensor_info["pos_log"].append(temp_sensor["pos"])
         self.sensor_info["sound"].append(temp_sensor["sound"])
         self.sensor_info["touch"].append(temp_sensor["touch"])
         self.sensor_info["torque"].append(temp_sensor["torque"])
@@ -155,9 +208,12 @@ class Body:
         for k in self.action_log.keys():
             temp[k] = int(self.action_log[k])
         print("\033[" + str(20) + ";2H\033[2K" + str(temp), end="")
+        print("\033[" + str(21) + ";2H\033[2K" + str(self.belief), end="")
 
     def is_sound(self):
-        return False  # 過去の値から、最新の値においておとがなる判定が下るか
+        if np.var(np.array(self.sensor_info["sound"])) >= 200:
+            return True  # 過去の値から、最新の値においておとがなる判定が下るか
+        return False
 
 
 

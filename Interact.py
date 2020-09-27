@@ -6,6 +6,8 @@ import random
 import sys
 import os
 from Modules import Module
+from pykeigan import utils
+from pykeigan import usbcontroller
 
 
 class Interact(Module):
@@ -14,22 +16,24 @@ class Interact(Module):
         self.param = {}
 
     def v_operator(self):
-        print("interact started")
+        # print("interact started")
         stop = False
-        accumlative = 0
+        accumulative = 0
         t = 0
         while self.p["play"] <= 90:
             t += 0  # このtでランダムな移動を作る
-            print("\033[" + str(24) + ";2H\033[2K" + "playing score: " + str(accumlative), end="")
 
-            # self.p["play"] = self.p["play"] + 0.06
-            self.p["play"] = self.p["play"] + 0.01
-            accumlative = self.play_update()
-            if accumlative >= 20:
-                accumlative = 0
+
+            # 報酬の処理
+            self.p["play"] = self.p["play"] + 0.01  # 0.06
+            accumulative = self.play_update()
+            if accumulative >= 20:
+                accumulative = 0
                 self.p["play"] = self.p["play"] + 20
                 # @喜びの舞
 
+
+            # 中断の処理
             time.sleep(0.1)
             if self.stopper:
                 self.stopper = False
@@ -37,11 +41,12 @@ class Interact(Module):
                 print("play cancelled")
                 break
 
+            print("\033[" + str(24) + ";2H\033[2K" + "playing score: " + str(accumulative), end="")
+
         if not stop:
             print("play finished")
             self.finisher()
 
-        print("\033[" + str(24) + ";2H\033[2K" + "", end="")
         return
 
     def is_active(self, physio):
